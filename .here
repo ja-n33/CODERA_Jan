@@ -1,0 +1,19 @@
+
+#%%
+#####
+##Install libraries
+#####
+
+import requests
+import pandas as pd
+import numpy as np
+import os
+from datetime import datetime
+from econdatapy import read
+
+#%%
+####
+##Request Data
+####
+
+df=read.dataset(id="P")
