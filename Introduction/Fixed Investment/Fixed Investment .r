@@ -87,64 +87,61 @@ write.xlsx(final, file.path(save_path, "Data.xlsx"))
 
 
 # Graph
-#source("utils.R") ##Not sure what this is supposed to do
-
-color_list <- RColorBrewer::brewer.pal(9, "Set1")
- ##using this in the absence of color list from utils.R
+source("Jan/utils.R") 
 
 scaling <- max(filter(final_pivot, type != "gfc")$percentage, na.rm = TRUE) / max(filter(final_pivot, type == "gfc")$percentage, na.rm = TRUE)
 ##Divide all types by gfc
 
-if (TRUE) { ##This is a development tool that allows us to comment out large blocks in 1 go
+if (TRUE) { 
 ggplot_fixed <- ggplot() +
-   #base_graph + ##This is part of utils.R which i dont have
-   geom_area(data = filter(final_pivot, type != "gfc"), 
-             aes(x = time_period, y = percentage, fill = type), 
-             alpha = 0.8) +
-   geom_line(data = filter(final_pivot, type == "gfc"), 
-             aes(x = time_period, y = percentage * scaling, color = type), 
-             linewidth = 1.2) +
-   scale_fill_manual(
-     values = color_list, 
-     labels = c("General Government", "Public Corporations", "Private Enterprises", 
-                "Residential Buildings", "Non-Residential Buildings", 
-                "Construction Works", "Transport Equipment", "Machinery", 
-                "Transfer Costs")
-   ) +
-   scale_color_manual(
-     values = c("gfc" = "black"),
-     labels = c("gfc" = "Gross Fixed \nCapital Formation (Total) (RHS)")
-   ) +
-   scale_y_continuous(
-     name = "% of Total GFCF",  
-     sec.axis = sec_axis(~ . / scaling, name = "GFCF as % of Real GDP")  
-   ) +
-   labs(
-     y = "% of total GFCF", 
-     title = "Gross Fixed Capital Formation by Sector",
-     caption = "Source: StatsSA"
-   ) +
-   theme_minimal(base_size = 10) +
-   theme(
-     plot.title = element_text(size = rel(0.995), hjust = 0.5, face = "bold", margin = margin(b = 4, l = -4)),
-     plot.subtitle = element_text(size = rel(0.8), margin = margin(b = 2)),
-     plot.title.position = "plot",
-     plot.caption.position = "plot",
-     plot.caption = element_text(hjust = 0, size = rel(0.7), margin = margin(t = 9)),
-     axis.title.y = element_text(margin = margin(r = 8)),
-     panel.grid = element_blank(),
-     legend.position = "right",
-     legend.title = element_blank(),
-     legend.text = element_text(size = 8), 
-     legend.key.size = unit(0.4, "cm"),
-     plot.margin = unit(c(4, 0, 3, 5), units = 'pt'),
-     axis.line = element_line(color = "black"),
-     axis.ticks = element_line(color = "black"),
-     axis.text.x = element_text(margin = margin(r = 8)),
-     axis.title.x = element_blank()
-   ) +
- guides(fill = guide_legend(ncol = 1)) #+
- #codera_logo(final_pivot, xpos = 0.7, ypos = 0.2, wdth = 6.5)
+    base_graph + 
+    geom_area(data = filter(final_pivot, type != "gfc"), 
+              aes(x = time_period, y = percentage, fill = type), 
+              alpha = 0.8) +
+    geom_line(data = filter(final_pivot, type == "gfc"), 
+              aes(x = time_period, y = percentage * scaling, color = type), 
+              linewidth = 1.2) +
+    scale_fill_manual(
+      values = color_list, 
+      labels = c("General Government", "Public Corporations", "Private Enterprises", 
+                  "Residential Buildings", "Non-Residential Buildings", 
+                  "Construction Works", "Transport Equipment", "Machinery", 
+                  "Transfer Costs")
+    ) +
+    scale_color_manual(
+      values = c("gfc" = "black"),
+      labels = c("gfc" = "Gross Fixed \nCapital Formation (Total) (RHS)")
+    ) +
+    scale_y_continuous(
+      name = "% of Total GFCF",  
+      sec.axis = sec_axis(~ . / scaling, name = "GFCF as % of Real GDP")  
+    ) +
+    labs(
+      y = "% of total GFCF", 
+      title = "Gross Fixed Capital Formation by Sector",
+      caption = "Source: StatsSA"
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(
+      plot.title = element_text(size = rel(0.995), hjust = 0.5, face = "bold", margin = margin(b = 4, l = -4)),
+      plot.subtitle = element_text(size = rel(0.8), margin = margin(b = 2)),
+      plot.title.position = "plot",
+      plot.caption.position = "plot",
+      plot.caption = element_text(hjust = 0, size = rel(0.7), margin = margin(t = 9)),
+      axis.title.y = element_text(margin = margin(r = 8)),
+      panel.grid = element_blank(),
+      legend.position = "right",
+      legend.title = element_blank(),
+      legend.text = element_text(size = 8), 
+      legend.key.size = unit(0.4, "cm"),
+      plot.margin = unit(c(4, 0, 3, 5), units = 'pt'),
+      axis.line = element_line(color = "black"),
+      axis.ticks = element_line(color = "black"),
+      axis.text.x = element_text(margin = margin(r = 8)),
+      axis.title.x = element_blank()
+    ) +
+  guides(fill = guide_legend(ncol = 1)) +
+  codera_logo(final_pivot, xpos = 0.7, ypos = 0.2, wdth = 6.5)
 
  ggplotgrob_fixed <- ggplotGrob(ggplot_fixed)
  ggplotgrob_fixed$layout[grepl("panel", ggplotgrob_fixed$layout$name), ]$clip <- "off"
@@ -157,8 +154,8 @@ png(filename = file.path(save_path, "Fixed Investments.png"),
 grid.newpage()
 grid.draw(ggplotgrob_fixed)
 dev.off()
- }
-print(ggplotgrob_fixed)
+  }
+
 # Plotting 
  sector_plot <- final %>%
  select(time_period, general_government, public_corporations, private_business_enterprises, gfc) %>%
@@ -173,7 +170,7 @@ Public_Corporations = public_corporations/total_investment*100,
 # # Plot
 if (TRUE){
 ggplot_fixed <- ggplot() +
-#     base_graph +
+     base_graph +
    geom_area(data = filter(sector_plot, Sector != "gfc"), 
              aes(x = time_period, y = Value, fill = Sector), 
              alpha = 0.8) +
@@ -220,8 +217,8 @@ ggplot_fixed <- ggplot() +
    guides(
      fill = guide_legend(nrow = 1),  
      color = guide_legend(nrow = 1)  
-   )
-   #  codera_logo(sector_plot, xpos=0.3, ypos=0.8, wdth=6.5)
+   ) +
+   codera_logo(sector_plot, xpos=0.3, ypos=0.8, wdth=6.5)
 
  ggplotgrob_fixed1 <- ggplotGrob(ggplot_fixed)
  ggplotgrob_fixed1$layout[grepl("panel", ggplotgrob_fixed1$layout$name), ]$clip <- "off"
