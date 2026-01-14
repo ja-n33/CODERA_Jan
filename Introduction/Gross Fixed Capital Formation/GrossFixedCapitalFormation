@@ -1,0 +1,380 @@
+##Gross Fixed Capital Formation
+
+packages <- c("grid",
+              "scales",
+              "stringr",
+              "ggtext",
+              "png",
+              "econdatar",
+              "plyr",
+              "readxl",
+              "lubridate",
+              "readODS",
+              "readr",
+              "tidyr",
+              "dplyr",
+              "ggplot2",
+              "plotly",
+              "haven",
+              "openxlsx",
+              "zoo",
+              "countrycode",
+              "haven",
+              "patchwork",
+              "ggridges",
+              "tcltk") ## needed for tibble()
+
+invisible(lapply(packages, library, c=TRUE))
+setwd(Sys.getenv("CODERA_Jan"))
+root<-Sys.getenv("CODERA_Jan")
+save_path <- file.path(root, "Introduction", "Gross Fixed Capital Formation")
+custom_base_size <- 20
+
+#Load Data
+
+gfcf <- read_dataset(
+  id = "QB_NATLACC",
+  series_key = "	KBP6009Y+KBP6085Y+KBP6091Y+KBP6080Y+KBP6087Y+KBP6094Y+KBP6081Y+KBP6082Y+KBP6086Y+KBP6088Y.A.R.N.LVL") %>%
+  as_tibble() %>%
+  rename(agriculture = KBP6080Y.A.R.N.LVL,
+  mining = KBP6081Y.A.R.N.LVL,
+  manufacturing = KBP6082Y.A.R.N.LVL,
+  electricity = KBP6085Y.A.R.N.LVL, 
+  construction = KBP6086Y.A.R.N.LVL,
+  wholesale = KBP6087Y.A.R.N.LVL, 
+  transport = KBP6088Y.A.R.N.LVL,
+  financial = KBP6091Y.A.R.N.LVL,
+  commnunity = KBP6094Y.A.R.N.LVL,
+  gfcf_total = 		KBP6009Y.A.R.N.LVL)
+  ##Yearly data from 1946 to 2022
+
+rgdp <- read_dataset(
+  id = "NATL_ACC_SARB",
+  series_key = "KBP6006.R.S") %>%
+  as_tibble()%>%
+    rename(rgdp = KBP6006.R.S)
+    ##Quarterly real gdp going back to 1960
+
+data_set <- left_join(gfcf, rgdp, by = "time_period") %>%
+    arrange(time_period) %>%
+    mutate(gfcf_ratio = gfcf_total/rgdp) %>%
+    mutate(across(!c(time_period, gfcf_total, rgdp, gfcf_ratio), ~(./gfcf_total), .names = "per_{.col}"))
+    ##selects all column except c(...), divides each column by gfcfc to find the ratio it represents, then adds per prefix to original column
+    ##now we have gfcfc ratio as well as the ratio of each component of gfcf
+
+write.xlsx(data_set, file.path(save_path, "GFCF.xlsx"), sheet_name = "Data")
+
+data_set_long <- data_set %>%
+    filter(if_all(everything(), ~!is.na(.))) %>% ##if_all returns true only if all cols meet a condition. everything() selects all columns. So dropping rows with NA
+    select(time_period, gfcf_ratio, contains("per"))%>%
+    pivot_longer(-time_period, names_to = "industry", values_to = "value")%>%
+    mutate(industry =  sub("^per_", "", industry)) ##removed prefix, replaces it with nothing and does this to the industry column
+
+scle <- (max(data_set_long |> filter(industry != "gfcf_ratio") |> pull(value), na.rm = TRUE))/
+ (max(data_set_long |> filter(industry == "gfcf_ratio") |> pull(value), na.rm = TRUE)) ##scale everything by gfcfratio
+
+
+ ##Graph
+color_list <- RColorBrewer::brewer.pal(11, "Set1") ##don't have the utils.r script so using this instead. 
+
+if (TRUE){
+ggplot_gfcf <- ggplot(data_set_long|> filter(industry != "gfcf_ratio"), aes(x= time_period, y = value, fill = industry))+
+#base_graph +
+geom_area(data = data_set_long|> filter(industry != "gfcf_ratio"), alpha = 2, 
+position = "fill")+
+  geom_line(data = data_set_long |> filter(industry == "gfcf_ratio"),
+      aes(y = value * scle, color = industry),size = 2)+
+scale_y_continuous(name = "% of Total GFCF", 
+labels = function(x) paste0(x * 100, "%"),
+expand = c(0,0),
+    sec.axis = sec_axis(
+      trans = ~ . / scle,  
+      name = "GFCF as % of RGDP",
+      labels = function(x) paste0(x * 100, "%")))+
+scale_x_date( breaks = seq(min(data_set_long$time_period), max(data_set_long$time_period), by = "12 years"),
+  date_labels = "%Y", expand = c(0,0))+
+#scale_color_manual(
+#  values = c("gfcf_ratio" = "black"),
+#   labels = c("gfcf_ratio" = "Gross Fixed \nCapital Formation\n(RHS)") )+
+#  scale_fill_manual(values = color_list, labels = c("agriculture" = "Agriculture", "mining" = "Mining", 
+#  "manufacturing" = "Manufacturing", "electricity" = "Electricity", "construction" = "Construction",
+#    "wholesale" = "Wholesale" ,"transport" = "Transport", ##removed "gfcf_ratio"="" as this creates an excess of values
+#  "financial" = "Financial", "commnunity" = "Community"))+
+labs(title = "Real Investment by Industry in South Africa",
+caption = "Source: SARB, StatsSA, EconData, Codera Analytics.\nGross Fixed Capital Formation at constant 2015 prices.",
+y = "% of Total GFCF")+
+theme_minimal(base_size = 9)+
+theme(
+    plot.title = element_text(size = rel(0.995), hjust = 0.5, face = "bold", margin = margin(b = 4, l = -4)),
+    plot.subtitle = element_text(size = rel(0.8), margin = margin(b = 2)),
+    plot.title.position = "plot",
+    plot.caption.position = "plot",
+    plot.caption = element_text(hjust = 0, size = rel(0.7), margin = margin(t = 9)),
+    axis.title.y = element_text(margin = margin(r = 8)),
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 8),
+    legend.key.size = unit(0.4, "cm"),
+    plot.margin = unit(c(4, 0, 3, 5), units = 'pt'),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text.x = element_text(margin = margin(r = 8)),
+    axis.title.x = element_blank()
+  ) #+
+  #codera_logo(data_set_long|> filter(industry != "gfcf_ratio"), xpos = 0.7, ypos = 0.1, wdth = 6.5)
+
+  ggplotgrob_gfcf <- ggplotGrob(ggplot_gfcf)
+ggplotgrob_gfcf$layout[grepl("panel", ggplotgrob_gfcf$layout$name), ]$clip <- "off"
+
+png(filename = file.path(save_path, "Investment per Industry.png"),
+    width = 1137,
+    height = 650,
+    res = 190)
+
+grid.newpage()
+grid.draw(ggplotGrob(ggplot_gfcf))
+dev.off()      
+}
+##scale_fill_manual() created a persistent issue,
+##Error in `palette()`:
+##! Insufficient values in manual scale. 10 needed but only 9 provided.
+##regardless of whether I kept or dropped gfcf_ratio
+
+
+if (TRUE){
+ ggplot_gfcf_line <- ggplot(data_set_long, aes(x= time_period, y = value, color = industry))+
+# base_graph +
+ geom_line(data = data_set_long|> filter(industry != "gfcf_ratio"), size = 2)+
+   geom_line(data = data_set_long |> filter(industry == "gfcf_ratio"),
+       aes(y = value * scle, color = industry),size = 2)+
+ scale_y_continuous(name = "% of Total GFCF", 
+ labels = function(x) paste0(x * 100, "%"),
+     sec.axis = sec_axis(
+       trans = ~ . / scle,  
+       name = "GFCF as % of RGDP",
+       labels = function(x) paste0(x * 100, "%")))+
+ scale_x_date( breaks = seq(min(data_set_long$time_period), max(data_set_long$time_period), by = "10 years"),
+   date_labels = "%Y", expand = c(0,0))+
+   #scale_color_manual(values = color_list, labels = c("agriculture" = "Agriculture, Forestry and Fishing","mining" = "Mining and Quarrying", 
+   #"manufacturing" = "Manufacturing", "electricity" = "Electricity, Gas and Water", "construction" = "Construction (Contractors)",
+   #"wholesale" = "Wholesale and retail trade,\ncatering and accomodation" ,"transport" = "Transport, Storage and\nCommunication",
+   #"financial" = "Financial Intermediation,\nInsurance,\nReal Estate and\nBusiness Services", "commnunity" = "Community, Social and\nPersonal Services",
+   #"gfcf_ratio" = "Gross Fixed \nCapital Formation\n(Total) (RHS)"))+
+ labs(title = "Gross Fixed Capital Formation per Sector",
+ caption = "Source: SARB, StatsSA, EconData, Codera Analytics",
+ y = "% of Total GFCF")+
+ theme_minimal(base_size = 10)+
+ theme(
+     plot.title = element_text(size = rel(0.995), hjust = 0.5, face = "bold", margin = margin(b = 4, l = -4)),
+     plot.subtitle = element_text(size = rel(0.8), margin = margin(b = 2)),
+     plot.title.position = "plot",
+     plot.caption.position = "plot",
+     plot.caption = element_text(hjust = 0, size = rel(0.7), margin = margin(t = 9)),
+     axis.title.y = element_text(margin = margin(r = 8)),
+     panel.grid = element_blank(),
+     legend.position = "right",
+     legend.title = element_blank(),
+     legend.text = element_text(size = 8),
+     plot.margin = unit(c(4, 0, 3, 5), units = 'pt'),
+     axis.line = element_line(color = "black"),
+     axis.ticks = element_line(color = "black"),
+     axis.text.x = element_text(margin = margin(r = 8)),
+     axis.title.x = element_blank()
+   ) #+
+   #codera_logo(data_set_long|> filter(industry != "gfcf_ratio"), xpos = 0.23, ypos = 0.95, wdth = 6.5)
+
+   ggplotgrob_gfcf1 <- ggplotGrob(ggplot_gfcf_line)
+ ggplotgrob_gfcf1$layout[grepl("panel", ggplotgrob_gfcf1$layout$name), ]$clip <- "off"
+
+ png(filename = file.path(save_path, "Investment per Industry(line).png"),
+     width = 1137,
+     height = 650,
+     res = 190)
+
+grid.newpage()
+grid.draw(ggplotGrob(ggplot_gfcf_line))
+dev.off()
+}
+
+##Sector Data
+
+ sector <- read_dataset(
+   id = "QB_NATLACC",
+   series_key = "KBP6109C+KBP6106C+KBP6100C.Q.R.N.LVL")%>%
+   as_tibble()%>%
+   rename(General_Government = KBP6100C.Q.R.N.LVL,
+   Public_Corporations = KBP6106C.Q.R.N.LVL,
+   Private_Business_Enterprises = KBP6109C.Q.R.N.LVL)# quarterly
+
+
+sector_annual <- read_dataset(
+  id = "QB_NATLACC",
+  series_key = "KBP6100Y+KBP6106Y+KBP6109Y.A.R.N.LVL")%>%
+  as_tibble()|>
+  rename(General_Government = 	KBP6100Y.A.R.N.LVL, 
+  Public_Corporations = 	KBP6106Y.A.R.N.LVL,
+  Private_Business_Enterprises = KBP6109Y.A.R.N.LVL) %>%
+  mutate(total = General_Government + Public_Corporations + Private_Business_Enterprises) %>%%
+  mutate(across(!c(time_period, total), ~./total, .names = "per_{.col}"))  # Annual
+  ##create a col with total public gfcf
+
+
+gf_ratio <- data_set_long %>%
+    filter(industry == "gfcf_ratio")
+
+
+sector_data <- left_join(sector_annual, gf_ratio, by = "time_period")|>
+    select(-industry)|>
+    rename(gfcf_ratio = value)
+##This creates a new dataset but we have kept the ratio of gfcf to gdp in its own column
+
+
+check <- sector_data %>%
+ mutate(match = if_else(data_set$gfcf_total== total, 1, 0)) %>%
+ select(time_period, match)
+##Check how many years match
+
+ sector_data<-head(sector_data %>%
+    select(time_period, contains("per"))%>%
+    rename(gov = per_General_Government,
+    pub = per_Public_Corporations,
+    priv = per_Private_Business_Enterprises)%>%
+    filter(time_period >= "2008-01-01"))
+    ##only select 3 variables
+
+sector_long <- sector_data |>
+select(time_period, gfcf_ratio, contains("per"))|>
+pivot_longer(-time_period, names_to = "sector", values_to = "value")|>
+filter(time_period >= "1960-01-01")
+
+
+scale <- (max(sector_long |> filter(sector != "gfcf_ratio") |> pull(value), na.rm = TRUE))/
+ (max(sector_long |> filter(sector == "gfcf_ratio") |> pull(value), na.rm = TRUE))
+
+if (TRUE){
+ggplot_sector <- ggplot(sector_long, aes(x= time_period, y = value, fill = sector))+
+#base_graph +
+geom_area(data = sector_long|> filter(sector != "gfcf_ratio"), alpha = 2,
+position = "fill")+
+  geom_line(data = sector_long|> filter(sector == "gfcf_ratio"),
+      aes(y = value * scale, color = sector),size = 1.5)+
+scale_y_continuous(name = "% of Total GFCF", 
+labels = function(x) paste0(x * 100, "%"),
+expand = c(0,0),
+    sec.axis = sec_axis(
+      trans = ~ . / scale,  
+      name = "GFCF as % of RGDP",
+      labels = function(x) paste0(x * 100, "%")))+
+scale_x_date( breaks = seq(min(sector_long$time_period), max(sector_long$time_period), by = "10 years"),
+  date_labels = "%Y", expand = c(0,0))+
+scale_color_manual(values = c("gfcf_ratio" = "black"),
+    labels = c("gfcf_ratio" = "Gross Fixed \nCapital Formation\n(RHS)") )+
+  #scale_fill_manual(values = (c("per_General_Government" = "#be1e2d","per_Public_Corporations" = "#c0c5cb","per_Private_Business_Enterprises" = "#273b8d")), labels = c("per_General_Government" = "General Government",
+  #"per_Public_Corporations" = "Public Corporations", "per_Private_Business_Enterprises" = "Private Investment", "gfcf_ratio" = ""))+
+labs(title = "Investment by Sector in South Africa",
+caption = "Source: SARB, StatsSA, EconData, Codera Analytics.\nGross Fixed Capital Formation at 2015 Constant Prices.",
+y = "% of Total GFCF")+
+theme_minimal(base_size = 10)+
+theme(
+    plot.title = element_text(size = rel(0.995), hjust = 0.5, face = "bold", margin = margin(b = 4, l = -4)),
+    plot.subtitle = element_text(size = rel(0.8), margin = margin(b = 2)),
+    plot.title.position = "plot",
+    plot.caption.position = "plot",
+    plot.caption = element_text(hjust = 0, size = rel(0.7), margin = margin(t = 9)),
+    axis.title.y = element_text(margin = margin(r = 8)),
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 8), 
+    legend.key.size = unit(0.4, "cm"),
+    plot.margin = unit(c(4, 0, 3, 5), units = 'pt'),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text.x = element_text(margin = margin(r = 8)),
+    axis.title.x = element_blank()
+  ) #+
+  #codera_logo(sector_long, xpos = 0.7, ypos = 0.2, wdth = 6.5)
+
+  ggplotgrob_sector <- ggplotGrob(ggplot_sector)
+ggplotgrob_sector$layout[grepl("panel", ggplotgrob_sector$layout$name), ]$clip <- "off"
+
+png(filename = file.path(save_path, "Investment per Sector.png"),
+    width = 1137,
+    height = 650,
+    res = 190)
+
+grid.newpage()
+grid.draw(ggplotGrob(ggplot_sector))
+dev.off()      
+}
+
+
+# General and Public Grouped
+sector_grouped <- sector_data %>%
+    select(time_period, gfcf_ratio, contains("per")) %>%
+    mutate(Government = per_General_Government + per_Public_Corporations)%>%
+    mutate(Private = per_Private_Business_Enterprises)%>%
+    select(-per_General_Government, -per_Public_Corporations, -per_Private_Business_Enterprises)%>%
+    pivot_longer(-time_period, names_to = "sector", values_to = "value")%>%
+    filter(time_period >= "1960-01-01")
+
+scl <- (max(sector_grouped |> filter(sector != "gfcf_ratio") |> pull(value), na.rm = TRUE))/
+ (max(sector_grouped |> filter(sector == "gfcf_ratio") |> pull(value), na.rm = TRUE))
+
+if (TRUE){
+ggplot_sector <- ggplot(sector_grouped, aes(x= time_period, y = value, fill = sector))+
+#base_graph +
+geom_area(data = sector_grouped|> filter(sector != "gfcf_ratio"), alpha = 2,
+position = "fill")+
+  geom_line(data = sector_grouped|> filter(sector == "gfcf_ratio"),
+      aes(y = value * scl, color = sector),size = 1.5)+
+scale_y_continuous(name = "% of Total GFCF", 
+labels = function(x) paste0(x * 100, "%"),
+expand = c(0,0),
+    sec.axis = sec_axis(
+      trans = ~ . / scl,  
+      name = "GFCF as % of RGDP",
+      labels = function(x) paste0(x * 100, "%")))+
+scale_x_date( breaks = seq(min(sector_grouped$time_period), max(sector_grouped$time_period), by = "10 years"),
+  date_labels = "%Y", expand = c(0,0))+
+scale_color_manual(values = c("gfcf_ratio" = "black"),
+    labels = c("gfcf_ratio" = "Gross Fixed \nCapital Formation\n(RHS)") )+
+  #scale_fill_manual(values = (c("Government" = "#be1e2d","Private" = "#273b8d")), labels = c("Government" = "General Government",
+  #"Private" = "Private Business Enterprises", "gfcf_ratio" = ""))+
+labs(title = "Investment by Sector in South Africa",
+caption = "Source: SARB, StatsSA, EconData, Codera Analytics.\nGross Fixed Capital Formation at 2015 Constant Prices.",
+y = "% of Total GFCF")+
+theme_minimal(base_size = 10)+
+theme(
+    plot.title = element_text(size = rel(0.995), hjust = 0.5, face = "bold", margin = margin(b = 4, l = -4)),
+    plot.subtitle = element_text(size = rel(0.8), margin = margin(b = 2)),
+    plot.title.position = "plot",
+    plot.caption.position = "plot",
+    plot.caption = element_text(hjust = 0, size = rel(0.7), margin = margin(t = 9)),
+    axis.title.y = element_text(margin = margin(r = 8)),
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 8), 
+    legend.key.size = unit(0.4, "cm"),
+    plot.margin = unit(c(4, 0, 3, 5), units = 'pt'),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text.x = element_text(margin = margin(r = 8)),
+    axis.title.x = element_blank()
+  ) #+
+  #codera_logo(sector_grouped, xpos = 0.7, ypos = 0.2, wdth = 6.5)
+
+  ggplotgrob_sector <- ggplotGrob(ggplot_sector)
+ggplotgrob_sector$layout[grepl("panel", ggplotgrob_sector$layout$name), ]$clip <- "off"
+
+png(filename = file.path(save_path, "Investment per Sector (grouped).png"),
+    width = 1137,
+    height = 650,
+    res = 190)
+
+grid.newpage()
+grid.draw(ggplotGrob(ggplot_sector))
+dev.off()      
+}
