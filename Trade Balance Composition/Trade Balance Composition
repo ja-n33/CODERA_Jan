@@ -1,0 +1,138 @@
+####
+##Visualising South Africa's Trade Balance. Show i) imports of goods, ii) imports of services, iii) exports of goods, iv) exports of services,
+##v) total trade balance, vi) service trade balance and vii) goods trade balance. 
+####
+
+####
+##Load Packages and Data
+####
+
+packages <- c("grid",
+              "scales",
+              "stringr",
+              "ggtext",
+              "png",
+              "econdatar",
+              "plyr",
+              "readxl",
+              "lubridate",
+              "readODS",
+              "readr",
+              "tidyr",
+              "dplyr",
+              "ggplot2",
+              "plotly",
+              "haven",
+              "openxlsx",
+              "zoo",
+              "countrycode",
+              "haven",
+              "patchwork",
+              "ggridges",
+              "tcltk",
+              "httpgd") ## needed for tibble()
+
+invisible(lapply(packages, library, c=TRUE))
+setwd(Sys.getenv("CODERA_Jan"))
+root<-Sys.getenv("CODERA_Jan")
+SAVE_PATH <- file.path(root, "Trade Balance Composition")
+custom_base_size <- 20
+
+##Data is from SARB Quarterly Bulletin under National Accounts
+##Use constant 2015 prices without seasonal adjustment as data will be combined across months. Suffix: J.A.N.N.LVL
+
+data1<-read_dataset(
+  id = "QB_NATLACC",
+  series_key = "KBP6611Y+KBP6610Y+KBP6609Y+KBP6608Y.A.R.N.LVL") %>%
+  as_tibble()%>%
+  rename(m_services = KBP6611Y.A.R.N.LVL,
+  m_goods = KBP6610Y.A.R.N.LVL, 
+  x_services = KBP6609Y.A.R.N.LVL,
+  x_goods = KBP6608Y.A.R.N.LVL)%>%
+  group_by(time_period)%>%
+  mutate(services_balance = x_services - m_services,
+  goods_balance = x_goods - m_goods,
+  trade_balance = services_balance + goods_balance,
+  plt_m_services = -m_services, 
+  plt_m_goods = -m_goods) %>%
+  filter(time_period >= "1994-01-01")
+
+data1_long<-data1 %>%
+    select(-c(m_services, m_goods)) %>%
+    pivot_longer(-time_period, names_to = "type", values_to = "value") 
+
+##In order to show imports as a negative component on the trade balance, plt_ is used to display the effect of imports. 
+
+####
+##Plot the data
+####
+
+source("utils.r")
+
+##Set min and max for graphs
+
+min_val <- data1_long %>%
+  pull(value) %>%
+  min(na.rm = TRUE)
+
+max_val <- data1_long %>%
+  pull(value) |>
+  max(na.rm = TRUE)
+
+##Set colours for bars
+opaque_dark<-"#273b8d"
+transparent_dark<-alpha(opaque_dark, 0.5)
+
+opaque_light<-"#02acba"
+transparent_light<-alpha(opaque_light, 0.5)
+
+
+
+if (TRUE) {
+ggplot_trade_comp<-ggplot(data = data1_long, aes(x = time_period, y = value, fill = type)) +
+    base_graph +
+    geom_bar(data = data1_long %>% filter(!(type %in% c("services_balance", "goods_balance", "trade_balance"))), stat = "identity", position = "stack") +
+    geom_line(data = data1_long %>% filter(type %in% c("services_balance", "goods_balance", "trade_balance")), linewidth = 1, aes(color = type, linetype = type)) +
+    scale_linetype_manual(values = c("services_balance" = "dotted", "goods_balance"= "dashed", "trade_balance" = "solid"), labels = c("services_balance" = "Services Balance", "goods_balance" = "Goods Balance", "trade_balance" = "Trade Balance")) +
+    scale_color_manual(values = c("services_balance" = "#0e1431", "goods_balance" = "#0e1431", "trade_balance" = "#0e1431"), guide = "none") +
+    scale_fill_manual(values = c("x_services" = transparent_dark, "x_goods" = opaque_dark, "plt_m_services" = transparent_light, "plt_m_goods" = opaque_light), labels = c("x_services" = "Services Exports", "x_goods" = "Goods Exports", "plt_m_services" = "Services Imports", "plt_m_goods" = "Goods Imports")) +
+    #scale_y_continuous(limits = c(min_val*1.1, max_val* 1.1),
+        #breaks = seq(floor(min_val * 1.1), ceiling(max_val * 1.1), by = 1)) +
+    scale_x_date(breaks = c(seq(as.Date("1994-01-01"), as.Date("2024-01-01"), by = "1 year"), as.Date("2025-01-01")),
+        date_labels = "%Y",
+        expand = expansion(mult = c(0, 0.05))) +
+    labs(title = "Composition of South African Trade", 
+        subtitle = "In Constant 2015 Prices",
+        caption = "Source: SARB, EconData", 
+        y = "R million") +
+    theme_minimal(base_size = 10)+
+    theme(plot.title = element_text(size = rel(0.995), hjust = 0, face = "bold", margin = margin(b = 4, l = -4)),
+            plot.subtitle = element_text(size = rel(0.8), margin = margin(b = 2)),
+            plot.title.position = "plot",
+            plot.caption.position = "plot",
+            plot.caption = element_text(hjust = 0, size = rel(0.7), margin = margin(t = 9)),
+            axis.title.y = element_text(margin = margin(r = 8)),
+            panel.grid = element_blank(),
+            legend.position = "right",
+            legend.title = element_blank(),
+            legend.spacing.y = unit(1, 'cm'),
+            plot.margin = unit(c(4, 0, 3, 5), units = 'pt'),
+            axis.text.x = element_text(angle = 90, hjust = 0.5, vjust = 0.5),
+            axis.title.x = element_blank(),
+            axis.line   = element_line(color = "black"),
+            axis.ticks = element_line(color = "black")) +
+        codera_logo(data1_long, xpos = 0.2, ypos = 0.1, wdth = 6.5) 
+
+
+        ggplotGrob_trade_comp <- ggplotGrob(ggplot_trade_comp)
+    ggplotGrob_trade_comp$layout[grepl("panel", ggplotGrob_trade_comp$layout$name), ]$clip <- "off"
+
+    png(filename = file.path(SAVE_PATH, "SA Trade Composition.png"),
+        width = 1250,
+        height = 650,
+        res = 190)
+    grid.newpage()
+    grid.draw(ggplotGrob_trade_comp)
+    dev.off()
+}
+
