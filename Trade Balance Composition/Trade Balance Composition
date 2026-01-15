@@ -96,8 +96,7 @@ ggplot_trade_comp<-ggplot(data = data1_long, aes(x = time_period, y = value, fil
     scale_linetype_manual(values = c("services_balance" = "dotted", "goods_balance"= "dashed", "trade_balance" = "solid"), labels = c("services_balance" = "Services Balance", "goods_balance" = "Goods Balance", "trade_balance" = "Trade Balance")) +
     scale_color_manual(values = c("services_balance" = "#0e1431", "goods_balance" = "#0e1431", "trade_balance" = "#0e1431"), guide = "none") +
     scale_fill_manual(values = c("x_services" = transparent_dark, "x_goods" = opaque_dark, "plt_m_services" = transparent_light, "plt_m_goods" = opaque_light), labels = c("x_services" = "Services Exports", "x_goods" = "Goods Exports", "plt_m_services" = "Services Imports", "plt_m_goods" = "Goods Imports")) +
-    #scale_y_continuous(limits = c(min_val*1.1, max_val* 1.1),
-        #breaks = seq(floor(min_val * 1.1), ceiling(max_val * 1.1), by = 1)) +
+    scale_y_continuous(labels = \(x) format(abs(x), big.mark = ",", scientific = FALSE)) +
     scale_x_date(breaks = c(seq(as.Date("1994-01-01"), as.Date("2024-01-01"), by = "1 year"), as.Date("2025-01-01")),
         date_labels = "%Y",
         expand = expansion(mult = c(0, 0.05))) +
