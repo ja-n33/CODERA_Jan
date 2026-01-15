@@ -92,7 +92,7 @@ if (TRUE) {
 ggplot_trade_comp<-ggplot(data = data1_long, aes(x = time_period, y = value, fill = type)) +
     base_graph +
     geom_bar(data = data1_long %>% filter(!(type %in% c("services_balance", "goods_balance", "trade_balance"))), stat = "identity", position = "stack") +
-    geom_line(data = data1_long %>% filter(type %in% c("services_balance", "goods_balance", "trade_balance")), linewidth = 1, aes(color = type, linetype = type)) +
+    geom_line(data = data1_long %>% filter(type %in% c("services_balance", "goods_balance", "trade_balance")), linewidth = 0.5, aes(color = type, linetype = type)) +
     scale_linetype_manual(values = c("services_balance" = "dotted", "goods_balance"= "dashed", "trade_balance" = "solid"), labels = c("services_balance" = "Services Balance", "goods_balance" = "Goods Balance", "trade_balance" = "Trade Balance")) +
     scale_color_manual(values = c("services_balance" = "#0e1431", "goods_balance" = "#0e1431", "trade_balance" = "#0e1431"), guide = "none") +
     scale_fill_manual(values = c("x_services" = transparent_dark, "x_goods" = opaque_dark, "plt_m_services" = transparent_light, "plt_m_goods" = opaque_light), labels = c("x_services" = "Services Exports", "x_goods" = "Goods Exports", "plt_m_services" = "Services Imports", "plt_m_goods" = "Goods Imports")) +
