@@ -1,0 +1,204 @@
+####
+##Visualising South Africa's Exports. Plot the % of exports composed of HS 26, 27, 71, 72, 73, 74, 75, 76 
+####
+
+####
+##Load Packages and Data
+####
+
+packages <- c("grid",
+              "scales",
+              "stringr",
+              "ggtext",
+              "png",
+              "econdatar",
+              "plyr",
+              "readxl",
+              "lubridate",
+              "readODS",
+              "readr",
+              "tidyr",
+              "dplyr",
+              "ggplot2",
+              "plotly",
+              "haven",
+              "openxlsx",
+              "zoo",
+              "countrycode",
+              "haven",
+              "patchwork",
+              "ggridges",
+              "tcltk",
+              "httpgd", 
+              "glue", 
+              "forecast",
+              "imputeTS") 
+
+invisible(lapply(packages, library, c=TRUE))
+setwd(Sys.getenv("CODERA_Jan"))
+root<-Sys.getenv("CODERA_Jan")
+SAVE_PATH <- file.path(root, "Export Composition")
+custom_base_size <- 20
+
+####
+##To find the total exports, use S.00.TOTAL.X.SARB.TX
+####
+
+x_total <- read_dataset(
+  id = "SARS_TRADE",
+  series_key = "S.00.TOTAL.X.SARB.TX") %>%
+  as_tibble() %>%
+  rename(total_exports = S.00.TOTAL.X.SARB.TX)
+
+##create list of hs codes
+hscodes <- c("26", "27", "71", "72", "73", "74", "75", "76")
+
+x_commodities <- data.frame(x_total$time_period) %>%
+    rename(time_period = x_total.time_period) 
+
+
+for (code in hscodes) {
+    temp_series_key <- paste0("S.",code,".TOTAL.X.ZA.TX")
+    temp_df <- read_dataset(
+        id = "SARS_TRADE",
+        series_key = temp_series_key) %>%
+        as_tibble()
+    x_commodities<-merge(x_commodities, temp_df, by = "time_period", all=TRUE)
+}
+
+
+x_df <- merge(x_total, x_commodities, by = "time_period", all=TRUE) %>%
+    rename(ores = S.26.TOTAL.X.ZA.TX,
+    minerals = S.27.TOTAL.X.ZA.TX,
+    precious_metals = S.71.TOTAL.X.ZA.TX,
+    iron_steel_raw = S.72.TOTAL.X.ZA.TX,
+    iron_steel_processed = S.73.TOTAL.X.ZA.TX,
+    copper = S.74.TOTAL.X.ZA.TX,
+    nickel = S.75.TOTAL.X.ZA.TX,
+    aluminium = S.76.TOTAL.X.ZA.TX) %>%
+    mutate(total_exports = total_exports*10)
+
+##We have 4 missing values for the SARB totals. 
+##Use SARIMAX to impute these values
+
+ts_data <- ts(x_df$total_exports,
+                start = c(2010, 1),
+                frequency = 12)
+
+imputed_vals <- na_kalman(ts_data, model = "auto.arima")
+
+x_df$total_exports_imputed <- as.numeric(imputed_vals)
+
+x_df[49, 2] <- x_df[49, 11]
+x_df[67, 2] <- x_df[67, 11]
+x_df[75, 2] <- x_df[75, 11]
+x_df[138, 2] <- x_df[138, 11]
+
+x_df_annual <- x_df %>%
+  mutate(year = year(time_period)) %>%  # Extract year
+  group_by(year) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE))
+
+##Plot
+
+source("utils.r")
+
+##Month on month
+
+x_df_long <- x_df %>%
+    pivot_longer(-time_period, names_to = "type", values_to = "value")
+
+if (TRUE) {
+ggplot_exp_comp<-ggplot(data = x_df_long, aes(x = time_period, y = value, fill = type)) +
+    base_graph +
+    geom_area(data = x_df_long %>% filter((type %in% c("ores", "minerals", "precious_metals", "iron_steel_raw", "iron_steel_processed", "copper", "nickel", "aluminium"))), stat = "identity", position = "stack") +
+    geom_line(data = x_df_long %>% filter(type == "total_exports"), linewidth = 0.5, aes(color = type, linetype = type)) +
+    scale_linetype_manual(values = c("total_exports" = "solid"), labels = c("total_exports" = "Total Exports")) +
+    #scale_color_manual(guide = "none") +
+    scale_fill_manual(values = color_list, labels = c("ores" = "Ores (HS26)", "minerals" = "Minerals (HS27)", "precious_metals" = "Precious Metals (HS71)", "iron_steel_raw" = "Raw Iron and Steel (HS72)", "iron_steel_processed" = " Processed Iron and Steel (HS73)", "copper" = "Copper (HS74)", "nickel" = "Nickel (HS75)", "aluminium" = "Aluminium (HS76)")) +
+    scale_x_date(breaks = c(seq(as.Date("2010-01-01"), as.Date("2025-01-01"), by = "6 months"), as.Date("2025-10-01")),
+        date_labels = "%Y-%m") +
+    labs(title = "Composition of South African Exports", ,
+        caption = "Source: SARB, SARS, EconData", 
+        y = "Rand") +
+    theme_minimal(base_size = 10)+
+    theme(plot.title = element_text(size = rel(0.995), hjust = 0, face = "bold", margin = margin(b = 4, l = -4)),
+            plot.subtitle = element_text(size = rel(0.8), margin = margin(b = 2)),
+            plot.title.position = "plot",
+            plot.caption.position = "plot",
+            plot.caption = element_text(hjust = 0, size = rel(0.7), margin = margin(t = 9)),
+            axis.title.y = element_text(margin = margin(r = 8)),
+            panel.grid = element_blank(),
+            legend.position = "right",
+            legend.title = element_blank(),
+            legend.spacing.y = unit(1, 'cm'),
+            plot.margin = unit(c(4, 0, 3, 5), units = 'pt'),
+            axis.text.x = element_text(angle = 90, hjust = 0.5, vjust = 0.5),
+            axis.title.x = element_blank(),
+            axis.line   = element_line(color = "black"),
+            axis.ticks = element_line(color = "black")) +
+        codera_logo(x_df_long, xpos = 0.2, ypos = 0.1, wdth = 6.5) 
+
+
+        ggplotGrob_exp_comp <- ggplotGrob(ggplot_exp_comp)
+    ggplotGrob_exp_comp$layout[grepl("panel", ggplotGrob_exp_comp$layout$name), ]$clip <- "off"
+
+    png(filename = file.path(SAVE_PATH, "SA Export Composition.png"),
+        width = 1250,
+        height = 650,
+        res = 190)
+    grid.newpage()
+    grid.draw(ggplotGrob_exp_comp)
+    dev.off()
+}
+
+
+
+##Annual (note we still need November and December numbers)
+
+x_df_annual_long <- x_df_annual %>%
+    pivot_longer(-year, names_to = "type", values_to = "value")
+
+if (TRUE) {
+ggplot_annual_exp_comp<-ggplot(data = x_df_annual_long, aes(x = year, y = value, fill = type)) +
+    base_graph +
+    geom_area(data = x_df_annual_long %>% filter((type %in% c("ores", "minerals", "precious_metals", "iron_steel_raw", "iron_steel_processed", "copper", "nickel", "aluminium"))), stat = "identity", position = "stack") +
+    geom_line(data = x_df_annual_long %>% filter(type == "total_exports"), linewidth = 0.5, aes(linetype = type)) +
+    scale_linetype_manual(values = c("total_exports" = "solid"), labels = c("total_exports" = "Total Exports")) +
+    #scale_color_manual(guide = "none") +
+    scale_fill_manual(values = color_list, breaks = c("ores", "minerals", "precious_metals", "iron_steel_raw", "iron_steel_processed", "copper", "nickel", "aluminium"), labels = c("ores" = "Ores (HS26)", "minerals" = "Minerals (HS27)", "precious_metals" = "Precious Metals (HS71)", "iron_steel_raw" = "Raw Iron and Steel (HS72)", "iron_steel_processed" = " Processed Iron and Steel (HS73)", "copper" = "Copper (HS74)", "nickel" = "Nickel (HS75)", "aluminium" = "Aluminium (HS76)")) +
+    scale_x_continuous(breaks = seq(2010, 2025, by = 1)) +
+    scale_y_continuous(labels = label_number(scale = 1e-6)) +
+    labs(title = "Composition of South African Exports" ,
+        caption = "Source: SARB, SARS, EconData", 
+        y = "R Million") +
+    theme_minimal(base_size = 10)+
+    theme(plot.title = element_text(size = rel(0.995), hjust = 0, face = "bold", margin = margin(b = 4, l = -4)),
+            plot.subtitle = element_text(size = rel(0.8), margin = margin(b = 2)),
+            plot.title.position = "plot",
+            plot.caption.position = "plot",
+            plot.caption = element_text(hjust = 0, size = rel(0.7), margin = margin(t = 9)),
+            axis.title.y = element_text(margin = margin(r = 8)),
+            panel.grid = element_blank(),
+            legend.position = "right",
+            legend.title = element_blank(),
+            legend.spacing.y = unit(1, 'cm'),
+            plot.margin = unit(c(4, 0, 3, 5), units = 'pt'),
+            axis.text.x = element_text(angle = 90, hjust = 0.5, vjust = 0.5),
+            axis.title.x = element_blank(),
+            axis.line   = element_line(color = "black"),
+            axis.ticks = element_line(color = "black")) +
+        codera_logo(x_df_long, xpos = 0.2, ypos = 0.8, wdth = 6.5) 
+
+
+        ggplotGrob_annual_exp_comp <- ggplotGrob(ggplot_annual_exp_comp)
+    ggplotGrob_annual_exp_comp$layout[grepl("panel", ggplotGrob_annual_exp_comp$layout$name), ]$clip <- "off"
+
+    png(filename = file.path(SAVE_PATH, "Annual SA Export Composition.png"),
+        width = 1250,
+        height = 650,
+        res = 190)
+    grid.newpage()
+    grid.draw(ggplotGrob_annual_exp_comp)
+    dev.off()
+}
